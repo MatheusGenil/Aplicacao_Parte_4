@@ -14,7 +14,6 @@ conexao_banco = mysql.connector.connect(
     database="Cinema"
 )
 
-
 #################### FILMES ##########################
 # Rota para cadastrar um novo filme
 @app.route('/filmes', methods=['POST'])
@@ -167,11 +166,24 @@ def atualizar_sala(sala_id):
         dados = rqt.get_json()
         Capacidade = dados.get('Capacidade')
         Status = dados.get('Status')
-        cursor.execute("UPDATE Cinema.Sala_2 SET Capacidade= %s, Status= %s WHERE Numero= %s",
-                    (Capacidade, Status, sala_id))
-        conexao_banco.commit()
 
-        return jsf({"message": f"Sala {sala_id} atualizada com sucesso!"})
+        if Status == "Indisponível" or Capacidade == 0:
+            cursor.execute("DELETE FROM Cinema.Sessão_2 WHERE Sala_Numero = %s",
+                           (sala_id, ))
+            conexao_banco.commit()
+            
+            cursor.execute("UPDATE Cinema.Sala_2 SET Capacidade= %s, Status= %s WHERE Numero= %s",
+                        (Capacidade, Status, sala_id))
+            conexao_banco.commit()
+
+            return jsf({"message": f"Sala {sala_id} atualizada com sucesso. As Sessões associadas à sala {sala_id} foram deletadas!"})
+        
+        else:
+            cursor.execute("UPDATE Cinema.Sala_2 SET Capacidade= %s, Status= %s WHERE Numero= %s",
+                        (Capacidade, Status, sala_id))
+            conexao_banco.commit()
+
+            return jsf({"message": f"Sala {sala_id} atualizada com sucesso!"})
     else:
         return jsf({"message": "Sala não encontrada"}), 404
     
@@ -187,7 +199,7 @@ def deletar_sala(sala_id):
         cursor.execute("DELETE FROM Cinema.Sala_2 WHERE Numero=%s", (sala_id,))
         conexao_banco.commit()
 
-        return jsf({"message": f"sala {sala_id} deletada com sucesso!"})
+        return jsf({"message": f"sala {sala_id} deletada com sucesso! As Sessões associadas à sala {sala_id} foram deletadas!"})
     else:
         return jsf({"message": "Sala não encontrada"}), 404
 
@@ -208,6 +220,16 @@ def cadastrar_sessao():
     Data = dados.get('Data')
     Filme_Id = dados.get('Filme_Id')
     Sala_Numero = dados.get('Sala_Numero')
+
+
+    cursor = conexao_banco.cursor(dictionary=True)
+    cursor.execute("SELECT Capacidade, Status FROM Cinema.Sala_2 WHERE Numero = %s",
+                   (Sala_Numero, ))
+    salas = cursor.fetchall()
+
+    for i in salas:
+        if i['Capacidade'] == 0 or i['Status'] == "Indisponível":        
+            return jsf({"message": "Sala Indisponível!"}), 404
 
     cursor = conexao_banco.cursor()
     cursor.execute("INSERT INTO Cinema.Sessão_2 (Id_sessão, Hora, Data, Filme_Id, Sala_Numero) VALUES (%s, %s, %s, %s, %s)",
@@ -237,11 +259,15 @@ def obter_sessao(sessao_id):
                    (sessao_id, ))
     sessao = cursor.fetchall()
 
-    for i in sessao:
-        i['Hora'] = serHora(i['Hora'])
+    if sessao:
+        for i in sessao:
+            i['Hora'] = serHora(i['Hora'])
 
-    return jsf(sessao)
-
+        return jsf(sessao)
+    
+    
+    else:
+        return jsf({"message": "Sessão não encontrada"}), 404
 # Rota para atualizar uma Sala pelo ID
 @app.route('/sessao/<int:sessao_id>', methods=['PUT'])
 def atualizar_sessao(sessao_id):
